@@ -4,15 +4,15 @@ from sympy.solvers import solve
 from sympy import Symbol
 
 def f1(x):
-    return 4.0*x-2.0
+    return (-0.894*x+0.671)/0.447
 def f2(x):
-    return 0.5*x+2.0
+    return (1*x+0.5)/1
 def f3(x):
-    return -0.3*x+7.0
+    return (1*x-1)/-1
 def f4(x):
-    return -0.3*x+7.0
+    return (x-1)/0
 def f5(x):
-    return -0.3*x+7.0
+    return (0.894*x-1.073)/-0.447
 
 x = Symbol('x')
 x1, =  solve(f1(x)-f2(x))
@@ -22,7 +22,7 @@ x3, =  solve(f2(x)-f3(x))
 y1 = f1(x1)
 y2 = f1(x2)
 y3 = f2(x3)
-
+print(x1, y1)
 plt.plot(x1,f1(x1),'go',markersize=10)
 plt.plot(x2,f1(x2),'go',markersize=10)
 plt.plot(x3,f2(x3),'go',markersize=10)
