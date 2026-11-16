@@ -44,8 +44,10 @@ Windows is not currently supported.
 ## Editing
 
 - The toolbar initially samples five pairs. Set a count from 1 to 50 and select
-  **Resample** for another collection. Unsaved axes require explicit discard
-  confirmation. A failed request preserves the current editor.
+  **Resample** for another collection of random axes. Only unsaved random axes
+  require discard confirmation; manually added axes and their edits are retained.
+  The count applies to random pairs, in addition to retained manual axes. A failed
+  request preserves the current editor.
 - Click anywhere in an axis area, enter a word or phrase, and apply. Intermediate
   positions are normalized numbers strictly between 0 and 1. Endpoints remain
   fixed at 0 and 1. Click a label to edit its text, set an exact position, or delete
@@ -73,6 +75,36 @@ Windows is not currently supported.
 Renaming an accepted candidate turns it into a manual concept, since the new
 text is no longer the WordNet lemma. Its previous candidate and provenance are
 retained under `origin`. Moving it without renaming preserves WordNet provenance.
+
+## Manual antonym lookup
+
+Enter a word in **Word** and select **Find Antonyms** (or press Enter). A single
+matching sense pair is added immediately. If several pairs or senses match, the
+results show both endpoint words, synset identifiers, and WordNet definitions.
+Select **Add Pair** beside the intended senses. Different senses of the same
+word pair remain separate choices. If no direct antonym exists, a clear message
+appears and no axis is added.
+
+Search is case-insensitive, trims and collapses whitespace, and treats underscores
+as spaces for WordNet phrases. It matches exact lexical labels in the same index
+used for random sampling, across all parts of speech. It does not guess spelling,
+expand inflected forms, or invent opposites for words without a direct WordNet
+antonym. The index's existing lexical-artifact filters also apply to manual lookup.
+
+Manual axes support the same concept placement, editing, dragging, suggestions,
+JSON/Markdown saves, and reload workflow as sampled axes. A **Manual · retained on
+resample** badge identifies them. Resampling replaces only random axes and never
+silently discards manual edits. Retained sense-pair IDs are excluded even when the
+sampler must reuse other random pairs because too few alternatives exist.
+
+Looking up an already-open sense pair (including by the opposite endpoint) keeps
+its existing concepts and marks it as manual; it does not create another copy.
+Save this change to persist retention behavior. The optional `axis_origin` field
+is saved in JSON and restored on reload. Older documents without it continue to
+behave as random axes. A manual axis still needs to be saved before closing the
+browser; retention on resample is not automatic persistence. If that pair exists
+on disk but is not open, the existing save-conflict protection applies: load it
+from **Saved Gradients** before updating it.
 
 ## Sampling and linguistic limits
 
@@ -129,6 +161,7 @@ JSON is the source of truth. Schema version 1 contains:
 | `id` | Stable sense-pair identifier |
 | `antonyms.left`, `antonyms.right` | Human-readable endpoint words |
 | `endpoints.left`, `endpoints.right` | Objects with `word`, `synset`, `lemma`, `lemma_key` |
+| `axis_origin` | Optional `manual` or `random`; absent means random. Manual axes survive resampling. |
 | `gradient` | Position-sorted array of intermediate concepts |
 | `gradient[].concept` | Word or short phrase, 1–120 characters |
 | `gradient[].position` | Finite numeric value, `0 < position < 1` |
@@ -179,3 +212,10 @@ Chromium tests run the real HTTP server with isolated temporary storage and a
 predictable corpus, exercising clicking, dragging, editing, deletion, independent
 axes, candidate acceptance, exact position round trips, save/search/reload,
 unsaved protection, failed resampling, and dense labels at mobile widths.
+
+Manual lookup tests additionally cover case and phrase normalization, ambiguous
+senses, opposite-endpoint deduplication, absent antonyms, the lookup HTTP endpoint,
+retention during resampling (including fallback sampling), and save/reload with
+unchanged WordNet provenance. Real-corpus checks verify sense definitions and
+lemma identifiers. Browser tests cover sense selection, duplicate selection,
+manual editing, and retention after reloading from disk.

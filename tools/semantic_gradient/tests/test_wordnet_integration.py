@@ -30,3 +30,14 @@ class RealWordNetTests(unittest.TestCase):
                 if p['relation'] == 'synonym': self.assertEqual(source, target)
                 elif p['relation'] == 'similar_to': self.assertIn(target, source.similar_tos())
                 elif p['relation'] == 'also_see': self.assertIn(target, source.also_sees())
+
+    def test_real_manual_lookup(self):
+        results = self.service.lookup(' COLD ')
+        self.assertGreater(len(results), 1)
+        for result in results:
+            doc = result['document']
+            self.assertIn('cold', doc['antonyms'].values())
+            for side, ep in doc['endpoints'].items():
+                self.assertEqual(result['senses'][side], self.corpus.synset(ep['synset']).definition())
+                self.assertIn(ep['lemma_key'], [l.key() for l in self.corpus.synset(ep['synset']).lemmas()])
+        self.assertEqual(self.service.lookup('zzzznotawordzzzz'), [])

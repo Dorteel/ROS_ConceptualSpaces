@@ -105,6 +105,7 @@ function render() {
     const doc = axis.doc, card = element('article', 'card'); card.dataset.id = doc.id;
     const heading = element('div', 'card-heading');
     heading.append(element('h2', '', `${doc.antonyms.left} — ${doc.antonyms.right}`));
+    if (doc.axis_origin === 'manual') heading.append(element('span', 'manual-state state', 'Manual · retained on resample'));
     heading.append(element('span', `state${axis.dirty ? ' dirty' : ''}`, axis.dirty ? 'Unsaved changes' : 'Saved'));
     heading.append(button('Save', () => operation(async () => { await save(axis); message('Gradient saved.'); }), 'save'));
     heading.append(button('Suggest Concepts', () => operation(async () => {
@@ -186,10 +187,11 @@ async function save(axis) { axis.doc = await api('/api/save', axis.doc); axis.di
 async function resample() {
   const count = Number($('#count').value);
   if (!Number.isInteger(count) || count < 1 || count > 50) throw new Error('Choose between 1 and 50 pairs.');
-  if (axes.some(axis => axis.dirty) && !confirm('Discard unsaved changes and resample?')) return;
+  const retained = axes.filter(axis => axis.doc.axis_origin === 'manual');
+  if (axes.some(axis => axis.doc.axis_origin !== 'manual' && axis.dirty) && !confirm('Discard unsaved changes to random axes and resample? Manual axes will be kept.')) return;
   message('Sampling WordNet antonyms… The first load may take a few seconds.');
-  const docs = await api('/api/sample', {count, exclude: axes.map(axis => axis.doc.id)});
-  axes = docs.map(wrap); showView('editor'); render();
+  const docs = await api('/api/sample', {count, exclude: axes.map(axis => axis.doc.id), retain: retained.map(axis => axis.doc.id)});
+  axes = [...retained, ...docs.map(wrap)]; showView('editor'); render();
   message(`Sampled ${docs.length} pairs.${docs.length < count ? ' Fewer distinct pairs were available than requested.' : ''}`);
 }
 function showView(view) {
@@ -209,12 +211,55 @@ async function listSaved() {
       const existing = axes.findIndex(axis => axis.doc.id === doc.id);
       if (existing >= 0 && axes[existing].dirty && !confirm('Discard unsaved edits to this gradient and reload the saved version?')) return;
       const loaded = wrap(await api(`/api/saved/${doc.id}`));
+      if (existing >= 0 && axes[existing].doc.axis_origin === 'manual' && loaded.doc.axis_origin !== 'manual') {
+        loaded.doc.axis_origin = 'manual'; loaded.dirty = true;
+      }
       if (existing >= 0) axes[existing] = loaded; else axes.push(loaded);
       showView('editor'); render(); message('Loaded saved gradient. Other axes are preserved.');
     })));
     root.append(row);
   }
 }
+// Selecting a duplicate retains the existing axis and its edits instead of replacing it.
+function addManualAxis(doc) {
+  let axis = axes.find(item => item.doc.id === doc.id);
+  const existed = Boolean(axis);
+  if (!axis) { axis = wrap(clone(doc)); axes.push(axis); }
+  if (axis.doc.axis_origin !== 'manual') {
+    axis.doc.axis_origin = 'manual'; axis.dirty = true;
+  }
+  showView('editor'); render();
+  $('#lookup-status').textContent = existed
+    ? 'This pair is already open. Its edits are preserved, and it will be kept on resample.'
+    : 'Added manual axis. It will be kept on resample.';
+  const card = [...document.querySelectorAll('.card')].find(node => node.dataset.id === doc.id);
+  card?.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+$('#lookup-form').addEventListener('submit', event => {
+  event.preventDefault();
+  operation(async () => {
+    const word = $('#lookup-word').value.trim();
+    $('#lookup-results').replaceChildren();
+    $('#lookup-status').textContent = 'Looking up antonyms…';
+    let matches;
+    try { matches = await api('/api/lookup', {word}); }
+    catch (error) { $('#lookup-status').textContent = error.message; throw error; }
+    if (!matches.length) {
+      $('#lookup-status').textContent = `No WordNet antonyms found for “${word}”.`; return;
+    }
+    if (matches.length === 1) { addManualAxis(matches[0].document); return; }
+    $('#lookup-status').textContent = `${matches.length} sense pairs found. Choose a pair to add.`;
+    for (const match of matches) {
+      const doc = match.document, row = element('article', 'lookup-result');
+      row.append(element('h3', '', `${doc.antonyms.left} — ${doc.antonyms.right}`));
+      for (const side of ['left', 'right']) {
+        row.append(element('p', 'sense', `${doc.endpoints[side].synset}: ${match.senses[side]}`));
+      }
+      row.append(button('Add Pair', () => addManualAxis(doc)));
+      $('#lookup-results').append(row);
+    }
+  });
+});
 $('#resample').onclick = () => operation(resample);
 $('#save-all').onclick = () => operation(async () => {
   let saved = 0;

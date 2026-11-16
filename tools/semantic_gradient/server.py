@@ -52,7 +52,9 @@ def make_server(host, port, store, wordnet):
                     if not isinstance(data, dict):
                         raise ValueError('Expected a JSON object.')
                     if url.path == '/api/sample':
-                        return self.reply(200, wordnet.sample(data.get('count', 5), data.get('exclude', [])))
+                        return self.reply(200, wordnet.sample(data.get('count', 5), data.get('exclude', []), data.get('retain', [])))
+                    if url.path == '/api/lookup':
+                        return self.reply(200, wordnet.lookup(data.get('word')))
                     if url.path == '/api/suggest':
                         return self.reply(200, wordnet.suggestions(data['endpoints']))
                     if url.path == '/api/save':

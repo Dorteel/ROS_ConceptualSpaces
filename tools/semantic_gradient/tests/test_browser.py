@@ -7,7 +7,7 @@ import unittest
 from playwright.sync_api import sync_playwright, expect
 from tools.semantic_gradient.backend import GradientStore, WordNetService
 from tools.semantic_gradient.server import make_server
-from test_backend import Corpus, fixture_document
+from test_backend import Corpus, fixture_document, ambiguous_corpus
 
 
 class BrowserTests(unittest.TestCase):
@@ -21,7 +21,7 @@ class BrowserTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = GradientStore(self.temp.name)
-        service = WordNetService(Corpus())
+        service = self.service = WordNetService(Corpus())
         # Deterministic corpus includes an axis with known candidate provenance.
         service._pairs = [(fixture_document(), 100000)] + service.pairs()[1:]
         self.server = make_server('127.0.0.1', 0, self.store, service)
@@ -183,3 +183,80 @@ class BrowserTests(unittest.TestCase):
                 self.assertGreater(label['width'], 20)
                 self.assertLess(label['height'], 60)
                 self.assertLess(label['bottom'], label['axisTop'])
+
+    def lookup(self, word):
+        self.page.locator('#lookup-word').fill(word)
+        self.page.get_by_role('button', name='Find Antonyms', exact=True).click()
+
+    def test_manual_duplicate_resample_save_reload(self):
+        self.add('keep this position', .321987)
+        self.lookup(' COLD ')
+        expect(self.card.locator('.manual-state')).to_be_visible()
+        expect(self.page.locator('.card')).to_have_count(5)
+        self.lookup('hot')
+        expect(self.page.locator('#lookup-status')).to_contain_text('already open')
+        expect(self.page.locator('.card')).to_have_count(5)
+        self.card.get_by_role('button', name='Suggest Concepts').click()
+        self.card.locator('.candidate').filter(has_text='cool').click()
+        self.card.locator('.axis').focus(); self.page.keyboard.press('Enter')
+        self.page.once('dialog', lambda dialog: dialog.accept())
+        self.page.get_by_role('button', name='Resample', exact=True).click()
+        expect(self.page.locator('.card')).to_have_count(6)
+        expect(self.card.locator('.concept')).to_have_count(2)
+        expect(self.card.locator('.concept').filter(has_text='keep this position')).to_have_attribute('data-position', '0.321987')
+        self.card.get_by_role('button', name='Save', exact=True).click()
+        expect(self.card.locator('.state').first).to_contain_text('Manual')
+        expect(self.card.locator('.state').last).to_have_text('Saved')
+        saved = self.store.load(fixture_document()['id'])
+        self.assertEqual(saved['axis_origin'], 'manual')
+        # Start a fresh editor to ensure retention metadata survives persistence.
+        self.page.once('dialog', lambda dialog: dialog.accept())
+        self.page.reload()
+        expect(self.page.locator('.card')).to_have_count(5)
+        self.page.get_by_role('button', name='Saved Gradients', exact=True).click()
+        expect(self.page.locator('.saved-row')).to_have_count(1)
+        self.page.once('dialog', lambda dialog: dialog.accept())
+        self.page.get_by_role('button', name='Load', exact=True).click()
+        expect(self.card.locator('.manual-state')).to_be_visible()
+        expect(self.card.locator('.concept')).to_have_count(2)
+        self.card.locator('.concept.wordnet').click()
+        self.page.locator('#concept-position').fill('.8')
+        self.page.get_by_role('button', name='Apply', exact=True).click()
+        self.card.get_by_role('button', name='Save', exact=True).click()
+        expect(self.card.locator('.state').last).to_have_text('Saved')
+        updated = self.store.load(saved['id'])
+        self.assertEqual(updated['gradient'][-1]['position'], .8)
+        self.assertEqual(updated['gradient'][-1]['provenance'], saved['gradient'][-1]['provenance'])
+
+    def test_manual_multiple_senses_and_missing_result(self):
+        self.service.corpus = ambiguous_corpus(); self.service._pairs = None
+        self.lookup('notaword')
+        expect(self.page.locator('#lookup-status')).to_contain_text('No WordNet antonyms found')
+        expect(self.page.locator('.card')).to_have_count(5)
+        self.lookup('cold')
+        expect(self.page.locator('.lookup-result')).to_have_count(3)
+        expect(self.page.locator('.card')).to_have_count(5)
+        choice = self.page.locator('.lookup-result').filter(has_text='warm.a.01')
+        expect(choice).to_contain_text('cold.a.02: Meaning of cold.a.02')
+        choice.get_by_role('button', name='Add Pair', exact=True).click()
+        expect(self.page.locator('.card')).to_have_count(6)
+        expect(self.page.locator('.manual-state')).to_have_count(1)
+        choice.get_by_role('button', name='Add Pair', exact=True).click()
+        expect(self.page.locator('.card')).to_have_count(6)
+        self.lookup('cool')
+        expect(self.page.locator('#lookup-status')).to_contain_text('No WordNet antonyms found')
+        expect(self.page.locator('.lookup-result')).to_have_count(0)
+        expect(self.page.locator('.card')).to_have_count(6)
+
+    def test_manual_unsaved_axis_needs_no_discard_on_resample(self):
+        self.page.get_by_role('button', name='Save All', exact=True).click()
+        expect(self.page.locator('#message')).to_have_text('Saved 5 gradients.')
+        self.lookup('cold')
+        expect(self.card.locator('.manual-state')).to_be_visible()
+        self.add('unsaved manual')
+        dialogs = []
+        self.page.on('dialog', lambda dialog: (dialogs.append(dialog.message), dialog.dismiss()))
+        self.page.get_by_role('button', name='Resample', exact=True).click()
+        expect(self.page.locator('.card')).to_have_count(6)
+        expect(self.card.locator('.concept')).to_have_text('unsaved manual')
+        self.assertEqual(dialogs, [])

@@ -84,10 +84,29 @@ class WordNetService:
         self._pairs = list(found.values())
         return self._pairs
 
-    def sample(self, count=5, exclude=()):
+    def lookup(self, word):
+        """Find exact lexical labels in the shared, sense-preserving antonym index."""
+        if not isinstance(word, str) or not word.strip() or len(word) > 120:
+            raise ValueError('Enter a word or short phrase of 1–120 characters.')
+        normalized = ' '.join(word.replace('_', ' ').split()).casefold()
+        corpus = self.load()
+        matches = []
+        for document, _ in self.pairs():
+            if normalized not in {e['word'].casefold() for e in document['endpoints'].values()}:
+                continue
+            matches.append({
+                'document': copy.deepcopy(document),
+                'senses': {side: corpus.synset(ep['synset']).definition()
+                           for side, ep in document['endpoints'].items()},
+            })
+        return sorted(matches, key=lambda m: (tuple(m['document']['antonyms'].values()),
+                                              m['document']['id']))
+
+    def sample(self, count=5, exclude=(), retain=()):
         if type(count) is not int or not 1 <= count <= 50:
             raise ValueError('Pair count must be an integer between 1 and 50.')
-        pairs = self.pairs()
+        retained = set(retain)
+        pairs = [p for p in self.pairs() if p[0]['id'] not in retained]
         excluded = set(exclude)
         fresh = [p for p in pairs if p[0]['id'] not in excluded]
         pool = fresh if len(fresh) >= count else pairs
@@ -132,6 +151,8 @@ class WordNetService:
 def validate(document):
     if not isinstance(document, dict) or document.get('schema_version') != SCHEMA_VERSION:
         raise ValueError('Unsupported gradient schema.')
+    if document.get('axis_origin', 'random') not in ('random', 'manual'):
+        raise ValueError('Unknown axis origin.')
     ends = document.get('endpoints')
     if not isinstance(ends, dict) or set(ends) != {'left', 'right'}:
         raise ValueError('Two endpoints are required.')

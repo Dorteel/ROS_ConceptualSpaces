@@ -31,6 +31,7 @@ class Synset:
         self.similar = []
     def name(self): return self._name
     def pos(self): return 'a'
+    def definition(self): return 'Meaning of ' + self._name
     def lemmas(self): return self.words
     def similar_tos(self): return self.similar
     def also_sees(self): return []
@@ -57,6 +58,68 @@ class Corpus:
 def fixture_document():
     corpus = Corpus()
     return new_document({'left': endpoint(corpus.sets[0].words[0]), 'right': endpoint(corpus.sets[1].words[0])})
+
+
+def ambiguous_corpus():
+    corpus = Corpus()
+    cold = Synset('cold.a.02', ['cold'])
+    hot = Synset('hot.a.02', ['hot'])
+    warm = Synset('warm.a.01', ['warm'])
+    cold.words[0].opposites = [hot.words[0], warm.words[0]]
+    hot.words[0].opposites = [cold.words[0]]
+    warm.words[0].opposites = [cold.words[0]]
+    corpus.sets.extend([cold, hot, warm])
+    return corpus
+
+
+class ManualLookupTests(unittest.TestCase):
+    def setUp(self): self.service = WordNetService(ambiguous_corpus())
+    def test_case_insensitive_multiple_senses_and_reverse_deduplication(self):
+        results = self.service.lookup('  CoLd  ')
+        self.assertEqual(len(results), 3)
+        self.assertEqual(len({r['document']['id'] for r in results}), 3)
+        self.assertEqual({r['document']['endpoints']['left']['synset'] for r in results},
+                         {'cold.a.01', 'cold.a.02'})
+        hot = self.service.lookup('HOT')
+        self.assertEqual(len(hot), 2)
+        self.assertTrue({r['document']['id'] for r in hot}.issubset(r['document']['id'] for r in results))
+        self.assertTrue(all('Meaning of' in r['senses']['left'] for r in results))
+        results[0]['document']['gradient'].append({'concept': 'modified'})
+        self.assertTrue(all(not r['document']['gradient'] for r in self.service.lookup('cold')))
+    def test_single_missing_and_invalid_input(self):
+        self.assertEqual(len(self.service.lookup('large')), 1)
+        self.assertEqual(self.service.lookup('nonexistentword'), [])
+        self.assertEqual(self.service.lookup('cool'), [])  # known word without direct antonyms
+        for word in ('', '   ', None, 42, 'x' * 121):
+            with self.subTest(word=word), self.assertRaises(ValueError): self.service.lookup(word)
+    def test_phrase_normalization(self):
+        left, right = Synset('all_right.a.01', ['all_right']), Synset('wrong.a.01', ['wrong'])
+        left.words[0].opposites = [right.words[0]]
+        self.service.corpus.sets.extend([left, right])
+        self.assertEqual(self.service.lookup(' ALL   RIGHT '), self.service.lookup('all_right'))
+        self.assertEqual(len(self.service.lookup('all right')), 1)
+    def test_retained_pairs_never_return_in_fallback_sampling(self):
+        retained = [r['document']['id'] for r in self.service.lookup('cold')]
+        sampled = self.service.sample(50, retain=retained)
+        self.assertTrue(sampled)
+        self.assertTrue(set(retained).isdisjoint(d['id'] for d in sampled))
+    def test_manual_lookup_persistence_and_provenance(self):
+        doc = next(r['document'] for r in self.service.lookup('cold')
+                   if r['document']['endpoints']['left']['synset'] == 'cold.a.01')
+        doc['axis_origin'] = 'manual'
+        candidate = self.service.suggestions(doc['endpoints'])[0]
+        doc['gradient'] = [{**candidate, 'source': 'wordnet', 'position': .321987}]
+        with tempfile.TemporaryDirectory() as directory:
+            store = GradientStore(directory)
+            saved = store.save(doc)
+            loaded = store.load(saved['id'])
+            self.assertEqual(loaded, saved)
+            self.assertEqual(loaded['axis_origin'], 'manual')
+            self.assertEqual(loaded['endpoints'], doc['endpoints'])
+            self.assertEqual(loaded['gradient'], doc['gradient'])
+            self.assertIn('similar_to', store.path_for(saved).with_suffix('.md').read_text())
+            loaded['gradient'][0]['position'] = .7
+            self.assertEqual(store.save(loaded)['gradient'][0]['position'], .7)
 
 
 class WordNetTests(unittest.TestCase):
@@ -181,6 +244,17 @@ class APITests(unittest.TestCase):
         self.assertEqual(len(self.request('/api/saved')), 1)
         with self.assertRaises(HTTPError) as ctx: self.request('/api/save', docs[0])
         self.assertEqual(ctx.exception.code, 409)
+    def test_manual_lookup_api(self):
+        matches = self.request('/api/lookup', {'word': ' COLD '})
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]['document']['id'], fixture_document()['id'])
+        self.assertEqual(self.request('/api/lookup', {'word': 'unknown'}), [])
+        with self.assertRaises(HTTPError) as ctx: self.request('/api/lookup', {'word': ''})
+        self.assertEqual(ctx.exception.code, 400)
+        retained = [matches[0]['document']['id']]
+        sampled = self.request('/api/sample', {'count': 50, 'retain': retained})
+        self.assertTrue(set(retained).isdisjoint(d['id'] for d in sampled))
+
     def test_errors_and_cross_origin(self):
         with self.assertRaises(HTTPError) as ctx: self.request('/api/sample', {'count': -1})
         self.assertEqual(ctx.exception.code, 400)

@@ -55,3 +55,10 @@ dialog .actions{justify-content:flex-end}
 .endpoint{max-width:80px;font-size:.85rem}
 nav button{flex-grow:1}
 }
+
+.lookup{margin-bottom:20px;padding:16px;border:1px solid #d5dfd9;border-radius:10px;background:white}
+#lookup-form{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+#lookup-results{max-height:360px;overflow:auto}
+.lookup-result{padding:12px 0;border-top:1px solid #d5dfd9}
+.lookup-result h3{font-size:1rem;margin:0}
+#lookup-status:empty{display:none}
