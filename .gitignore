@@ -1,0 +1,3 @@
+__pycache__/
+.venv/
+tools/semantic_gradient/saved_gradients/

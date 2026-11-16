@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Semantic Gradient Editor</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><p class="eyebrow">WORDNET · HUMAN JUDGMENT</p><h1>Semantic Gradient Editor</h1><p>Explore the words between opposites. You decide where they belong.</p></header>
+<p id="message" role="status" aria-live="polite"></p>
+<main id="workspace">
+<nav aria-label="Editor toolbar"><label>Antonym pairs <input id="count" type="number" value="5" min="1" max="50"></label><button id="resample">Resample</button><button id="save-all" class="primary">Save All</button><button id="editor-tab" aria-pressed="true">Editor</button><button id="saved-tab" aria-pressed="false">Saved Gradients</button></nav>
+<section id="editor" aria-label="Gradient editor"></section>
+<section id="saved" hidden><h2>Saved Gradients</h2><label>Search endpoints or concepts <input id="search" type="search"></label><button id="search-button">Search</button><div id="saved-list"></div></section>
+</main>
+<dialog id="concept-dialog"><form id="concept-form"><h2 id="dialog-title">Add concept</h2><label>Word or short phrase <input id="concept-word" required maxlength="120" autocomplete="off"></label><label>Position (0–1) <input id="concept-position" type="number" min="0.001" max="0.999" step="any" required></label><p id="concept-origin"></p><div class="actions"><button type="button" id="delete-concept" class="danger">Delete</button><button type="button" id="cancel-concept">Cancel</button><button type="submit" class="primary">Apply</button></div></form></dialog>
+<script src="/app.js" defer></script>
+</body></html>
