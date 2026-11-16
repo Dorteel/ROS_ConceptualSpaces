@@ -16,6 +16,11 @@ python -m nltk.downloader wordnet
 ./semantic-gradient.sh
 ```
 
+The launch and test scripts automatically use `.venv/bin/python` when present;
+activation is optional after installation. An explicit `PYTHON` setting overrides
+this choice. On Ubuntu/Debian, use this virtual environment to avoid the
+`externally-managed-environment` error; do not install into system Python.
+
 Open **http://127.0.0.1:8765**. Stop with Ctrl+C. First sampling indexes WordNet
 and may take several seconds; subsequent sampling uses the in-memory index.
 The tool does not automatically download corpora. If WordNet is missing, the

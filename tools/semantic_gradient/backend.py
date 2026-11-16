@@ -13,7 +13,13 @@ from pathlib import Path
 import fcntl
 
 SCHEMA_VERSION = 1
-SETUP = 'WordNet is unavailable. Run: python3 -m pip install nltk && python3 -m nltk.downloader wordnet'
+SETUP = (
+    'WordNet is unavailable. From the repository root, run:\n'
+    'python3 -m venv .venv\n'
+    '.venv/bin/python -m pip install -r tools/semantic_gradient/requirements.txt\n'
+    '.venv/bin/python -m nltk.downloader wordnet\n'
+    'Then restart ./semantic-gradient.sh. No system-wide pip installation is needed.'
+)
 
 
 class ResourceUnavailable(Exception):

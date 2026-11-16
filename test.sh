@@ -9,4 +9,7 @@ case "${1:-all}" in
   all) pattern='test_*.py' ;;
   *) echo 'Usage: ./test.sh [all|backend|integration|browser]' >&2; exit 2 ;;
 esac
+if [[ -z "${PYTHON:-}" && -x .venv/bin/python ]]; then
+  PYTHON=.venv/bin/python
+fi
 exec "${PYTHON:-python3}" -m unittest discover -s tools/semantic_gradient/tests -p "$pattern" -v
